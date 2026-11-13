@@ -1,0 +1,55 @@
+# check and test every push; on main, stage the package when npm does not have its version yet, through npm's
+# trusted publishing (no token here; npmjs.com trusts this workflow to stage, not to publish), for a maintainer to
+# approve with 2FA: npm stage approve, or on npmjs.com
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx biome ci .
+      - run: npx tsc --noEmit
+      - run: npx vitest --run
+      - run: npm run build
+
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # staged publishing needs npm 11.15.0 or newer
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: stage a new version
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is on npm already"
+          elif ! npm view "$name" name >/dev/null 2>&1; then
+            # npm trusts a workflow only for a package that exists: the first version goes out by hand
+            echo "::warning::$name is not on npm yet; publish it once by hand and add this workflow as its trusted publisher"
+          else
+            npm run build
+            npm stage publish --access public --provenance
+          fi

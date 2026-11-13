@@ -1,0 +1,60 @@
+{
+	"name": "@mrq/pi-goal",
+	"version": "0.1.0",
+	"description": "/goal for pi: keep working until an objective is met, judged by a reviewer that trusts only evidence, with nothing added to the system prompt or the tools",
+	"license": "MIT",
+	"type": "module",
+	"keywords": [
+		"pi-package",
+		"pi",
+		"pi-extension",
+		"goal",
+		"agent",
+		"coding-agent"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mrq1911/pi-goal.git"
+	},
+	"engines": {
+		"node": ">=22.18"
+	},
+	"exports": {
+		".": {
+			"source": "./src/goal.ts",
+			"types": "./dist/goal.d.ts",
+			"default": "./dist/goal.js"
+		}
+	},
+	"files": [
+		"dist",
+		"src",
+		"CHANGELOG.md"
+	],
+	"pi": {
+		"extensions": [
+			"./dist/goal.js"
+		]
+	},
+	"scripts": {
+		"check": "biome check --write --error-on-warnings . && tsc --noEmit",
+		"test": "vitest --run",
+		"build": "tsc -p tsconfig.build.json",
+		"prepack": "npm run build"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-agent-core": "*",
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.15",
+		"@earendil-works/pi-agent-core": "1.5.2",
+		"@earendil-works/pi-ai": "1.5.2",
+		"@earendil-works/pi-coding-agent": "1.5.2",
+		"@types/node": "26.6.3",
+		"typebox": "1.3.27",
+		"typescript": "7.0.2",
+		"vitest": "4.1.11"
+	}
+}
