@@ -22,9 +22,9 @@ pi install npm:@mrq/pi-goal
 | `/goal resume` | go on with a paused goal, with 50 more rounds |
 | `/goal clear` | drop it |
 
-While a goal is active, pi's status shows its round, `⇒ 3/50`, and each round starts with a notice saying what the
-reviewer found missing. Objectives that name a checkable end state work best: "until `npm test` passes", "until the
-endpoint returns 200".
+While a goal is active, pi's status shows how long it has been at it, `⇒ 12m` (`⇒ paused` once paused), and each
+round starts with a notice saying what the reviewer found missing; `/goal` tells the round. Objectives that name a
+checkable end state work best: "until `npm test` passes", "until the endpoint returns 200".
 
 ## How it works
 

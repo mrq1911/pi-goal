@@ -21,7 +21,14 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import goalExtension, { GOAL_NOTE, type Goal, MAX_STALLS, parseVerdict, remindOfGoal } from "../src/goal.ts";
+import goalExtension, {
+	formatElapsed,
+	GOAL_NOTE,
+	type Goal,
+	MAX_STALLS,
+	parseVerdict,
+	remindOfGoal,
+} from "../src/goal.ts";
 
 const look: ToolDefinition = {
 	name: "look",
@@ -278,6 +285,16 @@ describe("/goal", () => {
 			timestamp: 2,
 		};
 		expect(remindOfGoal([note, summary], goal)).toBeUndefined();
+	});
+
+	it("says how long a goal has been active as /loop says how long it loops", () => {
+		expect([45_000, 187_000, 720_000, 3_900_000, 183_600_000].map(formatElapsed)).toEqual([
+			"45s",
+			"3m 07s",
+			"12m",
+			"1h 05m",
+			"2d 03h",
+		]);
 	});
 
 	it("reads the reviewer's verdict in a fence or a sentence, and nothing else", () => {

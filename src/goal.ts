@@ -103,18 +103,25 @@ Answer with one line of JSON and nothing else, in one of these shapes:
 
 export default function goalExtension(pi: ExtensionAPI) {
 	let goal: Goal | undefined;
-	let reviewing = false;
+	/** When the goal last became active, at its kickoff or a resume. */
+	let since = Date.now();
+	/** Brings the status up to date a second at a time while the goal is active. */
+	let ticker: ReturnType<typeof setInterval> | undefined;
 
+	/** How long the goal has been active, as /loop says how long it loops, `⇒ 12m`; or that it is paused. */
 	const status = (ctx: ExtensionContext): void => {
-		const text =
-			goal?.status === "active"
-				? reviewing
-					? "⇒ review"
-					: `⇒ ${goal.rounds + 1}/${MAX_ROUNDS}`
-				: goal?.status === "paused"
-					? "⇒ paused"
-					: undefined;
-		ctx.ui.setStatus("goal", text);
+		const active = goal?.status === "active";
+		ctx.ui.setStatus(
+			"goal",
+			active ? `⇒ ${formatElapsed(Date.now() - since)}` : goal?.status === "paused" ? "⇒ paused" : undefined,
+		);
+		if (active && !ticker) {
+			ticker = setInterval(() => status(ctx), 1000);
+			ticker.unref();
+		} else if (!active && ticker) {
+			clearInterval(ticker);
+			ticker = undefined;
+		}
 	};
 
 	const save = (ctx: ExtensionContext, next: Goal | undefined): void => {
@@ -168,7 +175,8 @@ export default function goalExtension(pi: ExtensionAPI) {
 					ctx.ui.notify("No paused goal to resume", "info");
 					return;
 				}
-				// a resumed goal gets a new allowance of rounds
+				// a resumed goal gets a new allowance of rounds, and its time counts from now
+				since = Date.now();
 				save(ctx, { ...goal, status: "active", rounds: 0, stalls: 0, reason: undefined });
 				send(ctx, continuation(goal.objective, ["The user resumed the goal."]), { goalId: goal.id });
 				return;
@@ -187,6 +195,7 @@ export default function goalExtension(pi: ExtensionAPI) {
 			}
 			if (goal && goal.status !== "complete") ctx.ui.notify("The new goal replaces the old one", "info");
 			const created: Goal = { id: crypto.randomUUID(), objective: text, status: "active", rounds: 0, stalls: 0 };
+			since = Date.now();
 			save(ctx, created);
 			send(ctx, render(KICKOFF, { objective: escapeTags(text) }), {
 				goalId: created.id,
@@ -197,6 +206,10 @@ export default function goalExtension(pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => load(ctx));
 	pi.on("session_tree", (_event, ctx) => load(ctx));
+	pi.on("session_shutdown", () => {
+		clearInterval(ticker);
+		ticker = undefined;
+	});
 
 	// where the model would stop: the reviewer decides whether it goes on
 	pi.on("agent_before_settle", async (event, ctx) => {
@@ -210,19 +223,14 @@ export default function goalExtension(pi: ExtensionAPI) {
 			pause(ctx, `reached the limit of ${MAX_ROUNDS} rounds`);
 			return undefined;
 		}
-		reviewing = true;
-		status(ctx);
 		let verdict: Verdict | "aborted" | "overflow" | undefined;
 		try {
 			verdict = await review(ctx, event.context.llmMessages, current.objective, pi.getThinkingLevel());
 		} catch {
 			verdict = undefined;
-		} finally {
-			reviewing = false;
 		}
 		// /goal pause, clear or a new goal while the reviewer ran wins
 		if (goal !== current) return undefined;
-		status(ctx);
 		if (verdict === "aborted") return undefined;
 		if (verdict === "overflow") {
 			pause(ctx, "the conversation is too long for the reviewer; /compact, then /goal resume");
@@ -250,7 +258,6 @@ export default function goalExtension(pi: ExtensionAPI) {
 		}
 		const next: Goal = { ...current, rounds: current.rounds + 1, stalls, reason: verdict.reason };
 		goal = next;
-		status(ctx);
 		ctx.ui.notify(`Goal, round ${next.rounds + 1}: ${verdict.reason}`, "info");
 		const feedback = [verdict.reason, verdict.next_step && `Next step: ${verdict.next_step}`];
 		return {
@@ -291,6 +298,19 @@ export function remindOfGoal(messages: AgentMessage[], goal: Goal): AgentMessage
 	const content = typeof last.content === "string" ? [{ type: "text" as const, text: last.content }] : last.content;
 	const reminder = render(REMINDER, { objective: escapeTags(goal.objective) });
 	return [...messages.slice(0, -1), { ...last, content: [...content, { type: "text" as const, text: reminder }] }];
+}
+
+/** How long a goal has been active, as /loop says how long it loops: "45s", "3m 07s", "12m", "1h 05m", "2d 03h". */
+export function formatElapsed(ms: number): string {
+	const seconds = Math.max(0, Math.floor(ms / 1000));
+	if (seconds < 60) return `${seconds}s`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 10) return seconds % 60 ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${minutes}m`;
+	if (minutes < 60) return `${minutes}m`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return minutes % 60 ? `${hours}h ${String(minutes % 60).padStart(2, "0")}m` : `${hours}h`;
+	const days = Math.floor(hours / 24);
+	return hours % 24 ? `${days}d ${String(hours % 24).padStart(2, "0")}h` : `${days}d`;
 }
 
 /** The goal's latest state on the session's current branch. */
